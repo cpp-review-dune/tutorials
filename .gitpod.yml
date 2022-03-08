@@ -1,4 +1,4 @@
-image: ghcr.io/cpp-review-dune/introductory-review/dunepdelabtutorials
+image: ghcr.io/cpp-review-dune/introductory-review/dunepdelabtutorials:latest
 
 github:
   prebuilds:
