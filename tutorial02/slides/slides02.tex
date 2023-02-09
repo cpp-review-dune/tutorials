@@ -1,0 +1,293 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% A general frame for lecture slides and lecture notes in one file
+% using LaTeX beamer
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\documentclass[aspectratio=169,11pt]{beamer}
+%\usepackage[ngerman]{babel}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb,amsfonts}
+
+
+% only presentation
+\mode<presentation>
+{
+  \usepackage[course]{dunestyle-beamer}
+}
+
+% all after
+\usepackage{amscd}
+\usetikzlibrary{patterns}
+
+\usepackage{pgfplots,adjustbox}
+\usepackage{eurosym}
+\usepackage{graphicx}
+\graphicspath{{.}{figures/}{../../latexstyle/layout/}}
+%\usepackage{picinpar}
+%\usepackage{fancybox}
+%\usepackage{xspace}
+\usepackage{enumerate}
+\usepackage{algpseudocode}
+\usepackage{color}
+\usepackage{bold-extra}
+\usepackage{bm}
+\usepackage{stmaryrd}
+%\usepackage[squaren]{SIunits}
+\usepackage{nicefrac}
+
+\usepackage{fancyvrb,bbm,xspace}
+\usepackage{lmodern}
+\usepackage{fancyvrb,bbm,xspace}
+\usepackage[binary-units]{siunitx}
+\usepackage{xcolor,tabu}
+
+\usepackage{lmodern}
+\usepackage{inconsolata}
+\usepackage{nimbusmononarrow}
+%\renewcommand*\ttdefault{txtt}
+\usepackage{dsfont}
+
+\mode<presentation>
+{
+\theoremstyle{definition}
+}
+\newtheorem{Def}{Definition}%[section]
+\newtheorem{Exm}[Def]{Example}
+\newtheorem{Lem}[Def]{Lemma}
+\newtheorem{Rem}[Def]{Remark}
+\newtheorem{Rul}[Def]{Rule}
+\newtheorem{Thm}[Def]{Theorem}
+\newtheorem{Cor}[Def]{Corollary}
+\newtheorem{Obs}[Def]{Observation}
+\newtheorem{Ass}[Def]{Assumption}
+\newtheorem{Pro}[Def]{Property}
+\newtheorem{Alg}[Def]{Algorithm}
+\newtheorem{Prp}[Def]{Proposition}
+\newtheorem{Lst}[Def]{Listing}
+
+% Delete this, if you do not want the table of contents to pop up at
+% the beginning of each subsection:
+\AtBeginSection[]
+{
+  \begin{frame}<beamer>
+    \frametitle{Contents}
+    \tableofcontents[sectionstyle=show/shaded,subsectionstyle=hide/hide/hide]
+%\tableofcontents[currentsection]
+  \end{frame}
+}
+
+% Title definition
+\title{DUNE PDELab Tutorial 02}
+\subtitle{The Cell-centered Finite Volume Method}
+\author{Peter Bastian}
+\institute[]
+  {
+  IWR\\
+  Heidelberg University
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% now comes the individual stuff lecture by lecture
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{document}
+
+\frame[plain, noframenumbering]{\titlepage}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{frame}
+\frametitle{Motivation}
+This tutorial extends on tutorial 00 by
+\begin{enumerate}[1)]
+\item Solving a \textbf{nonlinear} stationary PDE
+\item Using \textbf{different types of boundary conditions}
+\item Implementing a \textbf{cell-centered finite volume method with two-point flux
+approximation} as an example of a non-conforming scheme.
+\item Implementing \textbf{all possible methods of a local operator}.
+\end{enumerate}
+\end{frame}
+
+\begin{frame}
+\frametitle{PDE Problem}
+We consider the problem (same as in tutorial 1)
+\begin{align*}
+-\Delta u + q(u) &= f &&\text{in $\Omega$},\\
+u &= g &&\text{on $\Gamma_D\subseteq\partial\Omega$},\\
+-\nabla u\cdot \nu &= j &&\text{on $\Gamma_N=\partial\Omega\setminus\Gamma_D$}.
+\end{align*}
+\begin{itemize}
+\item $q:\mathbb{R}\to\mathbb{R}$ a nonlinear function
+\item $f: \Omega\to\mathbb{R}$ the source term
+\item $g: \Omega\to\mathbb{R}$ a function for Dirichlet boundary conditions on $\Gamma_D$
+\item $j : \Gamma_N\to\mathbb{R}$ a function for Neumann (flux) boundary conditions
+\item $\nu$: unit outer normal to the domain
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Notation for Interior Intersections}
+\begin{center}
+\begin{tikzpicture}[scale=1.3]
+\draw[draw=none,pattern=north east lines] (-0.25,0)  rectangle (0,3);
+\draw[very thick] (0,0)  rectangle (6,3);
+\draw[very thick] (3,0) -- (3,3);
+\node at (1.5,2.2) {$T_{F'}^-, T_F^-$};
+\node at (4.5,2.2) {$T_F^+$};
+\draw[fill=black] (1.5,1.5)  circle (0.07);
+\node[below] at (1.5,1.5) {$x_{T_{F'}^-}, x_{T_F^-}$};
+\draw[fill=black] (4.5,1.5)  circle (0.07);
+\node[below] at (4.5,1.5) {$x_{T_F^+}$};
+\draw[thick,->] (3,1.5) -- (4,1.5);
+\draw[fill=black] (3,1.5)  circle (0.07);
+\node[left] at (3,1.5) {$x_{F}$};
+\node[below] at (3.5,1.5) {$\nu_F$};
+\node[left] at (3,0.5) {$F$};
+\draw[fill=black] (0,1.5)  circle (0.07);
+\draw[thick,->] (0,1.5) -- (-1,1.5);
+\node[right] at (0,1.5) {$x_{F'}$};
+\node[right] at (0,0.5) {$F'$};
+\end{tikzpicture}\hspace{0.1\textwidth}
+\end{center}
+$\mathcal{F}_h^i=\{F_1,\ldots,F_N\}$: set of {\em interior intersections}\\
+\medskip
+$\mathcal{F}_h^{\partial\Omega}=\{F_1,\ldots,F_L\}$: set of {\em boundary intersections}
+independent of boundary condition\\
+\medskip
+$\mathcal{F}_h^{\partial\Omega} = \mathcal{F}_h^{\Gamma_D}  \cup \mathcal{F}_h^{\Gamma_N}$
+\end{frame}
+
+\begin{frame}
+\frametitle{Discrete Weak Formulation}
+Finite volume methods use the function space
+\begin{equation*}
+W_h = \{w\in L^2(\Omega) \,:\,  \text{$w|_T=$ const for all $T\in\mathcal{T}_h$}\} .
+\end{equation*}
+then we can derive the following discrete weak formulation:
+{\small\begin{align*}
+\int_{\Omega} f v \,dx &= \int_{\Omega} [-\Delta u + q(u)] v\,dx
+= \sum_{T\in\mathcal{T}_h} v \int_T -\Delta u + q(u) \,dx &&\text{($v$ const on $T$)}\\
+&= \sum_{T\in\mathcal{T}_h} \left[\int_T q(u) v \,dx - \int_{\partial T} \nabla u \cdot \nu v \,ds
+\right] &&\text{(Gauss' thm.)} \\
+&= \sum_{T\in\mathcal{T}_h} \int_T q(u) v \,dx
+-\sum_{F\in\mathcal{F}_h^i} \int_F \nabla u \cdot \nu_F \bigl[v(x_{T_F^-}) - v(x_{T_F^+})\bigr] \,ds \\
+& \hspace{10mm}-\sum_{F\in\mathcal{F}_h^{\partial\Omega}} \int_F \nabla u \cdot \nu_F \,ds .
+&&\text{(rearrange)}
+\end{align*}}
+\end{frame}
+
+\begin{frame}
+\frametitle{Finite Volume Scheme}
+Now approximate the directional derivative
+$$\nabla u\cdot \nu_F \approx \frac{u_h(x_{T_F^+})-u_h(x_{T_F^-})}{\|x_{T_F^+} - x_{T_F^-}\|},
+\qquad \text{(two-point flux approximation)}$$
+and all integrals by the midpoint rule
+$$\int_T f \,dx \approx f(x_T)|T| $$
+to get the abstract problem
+\begin{equation*}
+\boxed{ \text{Find $u_h\in W_h$ s.t.:} \quad r_h^{\text{CCFV}}(u_h,v) = 0 \quad \forall v \in W_h }
+\end{equation*}
+where the residual form is \ldots
+\end{frame}
+
+\begin{frame}
+\frametitle{Residual Form}
+\begin{align*}
+r_h^{\text{CCFV}}(u_h,v)
+& = \sum_{T\in\mathcal{T}_h} q(u_h(x_T)) v(x_T) |T|
+- \sum_{T\in\mathcal{T}_h} f(x_T) v(x_T) |T| && \text{1. and 2.}\\
+&\ - \sum_{F\in\mathcal{F}_h^i}
+\frac{u_h(x_{T_F^+})-u_h(x_{T_F^-})}{\|x_{T_F^+} - x_{T_F^-}\|}
+\bigl[v(x_{T_F^-}) - v(x_{T_F^+})\bigr] |F| && \text{3.}\\
+&\ + \sum_{F\in\mathcal{F}_h^{\partial\Omega}\cap\Gamma_D}
+\frac{u_h(x_{T_F^-})}{\|x_{F} - x_{T_F^-}\|} v(x_{T_F^-}) |F| && \text{4.}\\
+&\ - \sum_{F\in\mathcal{F}_h^{\partial\Omega}\cap\Gamma_D}
+\frac{g(x_{F}))}{\|x_{F} - x_{T_F^-}\|} v(x_{T_F^-}) |F| && \text{5.}\\
+&+ \sum_{F\in\mathcal{F}_h^{\partial\Omega}\cap\Gamma_N} j(x_{F}) v(x_{T_F^-}) |F| . && \text{5.}
+\end{align*}
+\end{frame}
+
+\begin{frame}
+\frametitle{Remarks on the Residual Form}
+\textit{Five} different types of integrals are involved in the
+residual form:
+\begin{enumerate}
+\item Volume integral depending on trial and test function.
+\item Volume integral depending on test function only.
+\item Interior intersection integral depending on trial and test function.
+\item Boundary intersection integral depending on trial and test function.
+\item Boundary intersection integral depending on test function only.
+\end{enumerate}
+Dirichlet as well as Neumann boundary conditions are built weakly into the
+residual form!\\
+\medskip
+No constraints on the function space are necessary in this case\\
+\medskip
+Can be extended to discontinuous Galerkin methods
+\end{frame}
+
+\begin{frame}
+\frametitle{General Residual Form}
+A residual form in PDELab has the following structure:
+\begin{equation*}
+\begin{split}
+r(u,v) &=
+\sum_{T\in\mathcal{T}_h} \alpha_T^V(R_T u, R_T v)
++ \sum_{T\in\mathcal{T}_h} \lambda_T^V(R_T v) \\
+&\qquad+ \sum_{F\in\mathcal{F}_h^i} \alpha_F^S(R_{T_F^-} u,R_{T_F^+} u, R_{T_F^-} v, R_{T_F^+} v)\\
+&\qquad+ \sum_{F\in\mathcal{F}_h^{\partial\Omega}} \alpha_F^B(R_{T_F^-} u, R_{T_F^-} v)
++ \sum_{F\in\mathcal{F}_h^{\partial\Omega}} \lambda_F^B(R_{T_F^-} v) .
+\end{split}\label{eq:GeneralResidualForm}
+\end{equation*}
+which results in the following methods on the local operator
+\begin{center}
+\scriptsize
+\begin{tabular}{l|l|l|l}
+    & volume & skeleton & boundary \\
+\hline
+residual    & \lstinline!alpha_volume! & \lstinline!alpha_skeleton! & \lstinline!alpha_boundary! \\
+                & \lstinline!lambda_volume! & & \lstinline!lambda_boundary! \\
+\hline
+Jacobian  & \lstinline!jacobian_volume! & \lstinline!jacobian_skeleton! & \lstinline!jacobian_boundary! \\
+\hline
+Jac.  app.  & \lstinline!jacobian_apply_volume! & \lstinline!jacobian_apply_skeleton! &
+\lstinline!jacobian_apply_boundary!
+\end{tabular}
+\end{center}
+\begin{itemize}
+\item[\rightarrownice] There are up to 11 methods on the local
+  operator.\\The CCFV scheme implements them all!
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Implementation Overview}
+The tutorial consist of the following files:
+\begin{enumerate}[1)]
+\item The ini-file
+\lstinline{tutorial02.ini} holds parameters
+which control the execution.
+\item The main file \lstinline{tutorial02.cc} includes the necessary C++,
+DUNE and PDELab header files;
+contains the \lstinline{main} function;
+instantiates DUNE grid objects and calls the \lstinline{driver} function.
+\item File \lstinline{driver.hh} instantiates the PDELab classes
+for solving a nonlinear stationary problem with the cell-centered finite
+volume method and solves the problem.
+\item File \lstinline{nonlinearpoissonfv.hh} contains the class
+\lstinline{NonlinearPoissonFV} realizing a PDELab local operator
+\item File \lstinline{problem.hh} contains a parameter class which
+encapsulates the user-definable part of the PDE problem
+\end{enumerate}
+\end{frame}
+
+\end{document}
