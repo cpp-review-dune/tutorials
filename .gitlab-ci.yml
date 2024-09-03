@@ -1,0 +1,83 @@
+
+---
+
+variables:
+# Suitesparse, as installed with Debian, is thread-parallel using OpenMP.
+# OpenMP silently assumes, it can spawn as many threads as there are cores.
+# In a worst case scenario, this leads to a number of threads quadratic in
+# the core count, if you also do parallel test execution with the maximum
+# number of cores. We solve the issue by disallowing OpenMP to allocate more
+# than one thread.
+  OMP_NUM_THREADS: 1
+  DUNECI_PARALLEL: 4
+
+# include:
+#   - project: 'core/ci-config'
+#     ref: master
+#     file: 'config/common/master.yml'
+#   - project: 'core/ci-config'
+#     ref: master
+#     file: 'jobs/common/master.yml'
+
+.dune_setup: &dune_setup |-
+  . /duneci/bin/duneci-init-job
+  duneci-install-module https://gitlab.dune-project.org/core/dune-common.git
+  duneci-install-module https://gitlab.dune-project.org/core/dune-geometry.git
+  duneci-install-module https://gitlab.dune-project.org/core/dune-localfunctions.git
+  duneci-install-module https://gitlab.dune-project.org/staging/dune-uggrid.git
+  duneci-install-module https://gitlab.dune-project.org/core/dune-grid.git
+  duneci-install-module https://gitlab.dune-project.org/extensions/dune-alugrid.git
+  duneci-install-module https://gitlab.dune-project.org/core/dune-istl.git
+  duneci-install-module https://gitlab.dune-project.org/staging/dune-typetree.git
+  duneci-install-module https://gitlab.dune-project.org/staging/dune-functions.git
+  duneci-install-module https://gitlab.dune-project.org/extensions/dune-multidomaingrid.git
+  duneci-install-module https://gitlab.dune-project.org/pdelab/dune-pdelab.git
+
+.common: &common
+  script:
+    - duneci-standard-test
+  tags:
+    - "duneci"
+
+debian:11--gcc:
+  <<: *common
+  image: registry.dune-project.org/docker/ci/debian:11
+  before_script:
+    - *dune_setup
+  variables:
+    DUNECI_TOOLCHAIN: gcc-10-20
+  artifacts:
+    reports:
+      junit: junit/*.xml
+
+debian:11--clang:
+  <<: *common
+  image: registry.dune-project.org/docker/ci/debian:11
+  before_script:
+    - *dune_setup
+  variables:
+    DUNECI_TOOLCHAIN: clang-11-20
+  artifacts:
+    reports:
+      junit: junit/*.xml
+
+# # Check for spelling mistakes in text
+# code-spelling-check:
+#   stage: .pre
+#   # Avoid the global 'before_script'
+#   before_script: ""
+#   image: registry.dune-project.org/docker/ci/debian:11
+#   tags: [duneci]
+#   script:
+#   - codespell
+#     --ignore-words-list dorder,multline,ned,numer,wit,Elemente,.mis.
+
+# reuse:
+#   stage: .pre
+#   image:
+#     name: docker.io/fsfe/reuse:latest
+#     entrypoint: [""]
+#   tags: [duneci]
+#   before_script: ""
+#   script:
+#     - reuse lint
